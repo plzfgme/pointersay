@@ -3,6 +3,7 @@ channel = "stable"
 components = [
   "rustfmt",
   "rustc",
+  "rust-src",
   "rust-analyzer",
   "cargo",
   "clippy",

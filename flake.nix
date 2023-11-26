@@ -41,7 +41,7 @@
 
         devShells = {
           default = pkgs.mkShell {
-            nativeBuildInputs = packages.default.buildInputs ++ packages.default.nativeBuildInputs;
+            nativeBuildInputs = [ toolchain ] ++ packages.default.buildInputs ++ packages.default.nativeBuildInputs;
           };
         };
       }
