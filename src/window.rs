@@ -1,4 +1,9 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use glib::clone;
+use glib::timeout_add_seconds_local;
+use glib::ControlFlow;
 use gtk4::prelude::*;
 use gtk4::Application;
 use gtk4::ApplicationWindow;
@@ -9,9 +14,17 @@ use gtk4::WrapMode;
 
 use crate::popup::setup_popup;
 use crate::popup::PopupInfo;
+use crate::Settings;
+use crate::Timeout;
 use crate::{global_info::GlobalInfo, Backend};
 
-pub fn create_window(backend: Backend, app: &Application, global_info: &GlobalInfo, text: &str) {
+pub fn create_window(
+    backend: Backend,
+    settings: &Settings,
+    app: &Application,
+    global_info: &GlobalInfo,
+    text: &str,
+) {
     let window = ApplicationWindow::new(app);
     let css = "
         window {
@@ -20,6 +33,7 @@ pub fn create_window(backend: Backend, app: &Application, global_info: &GlobalIn
             border-radius: 5px;
         }
         ";
+
     let provider = gtk4::CssProvider::new();
     provider.load_from_data(css);
     window
@@ -45,7 +59,12 @@ pub fn create_window(backend: Backend, app: &Application, global_info: &GlobalIn
     scrolled_window.set_child(Some(&text_view));
     scrolled_window.set_vexpand(true);
 
-    let close_button = Button::with_label("Close");
+    let timeout = calculate_timeout(settings, text);
+
+    let close_button = match timeout {
+        Some(timeout) => Button::with_label(&format!("Close ({}s)", timeout)),
+        None => Button::with_label("Close"),
+    };
     close_button.connect_clicked(clone!(@weak window => move |_| {
         window.destroy();
     }));
@@ -56,7 +75,33 @@ pub fn create_window(backend: Backend, app: &Application, global_info: &GlobalIn
 
     setup_popup(backend, &window, &calculate_popup_info(global_info, text));
 
+    if let Some(timeout) = timeout {
+        let timeout = Rc::new(Cell::new(timeout));
+        timeout_add_seconds_local(
+            1,
+            clone!(@weak window => @default-return ControlFlow::Break, move || {
+                timeout.set(timeout.get() - 1);
+                close_button.set_label(&format!("Close ({}s)", timeout.get()));
+                if timeout.get() == 0 {
+                    window.destroy();
+                    ControlFlow::Break
+                } else {
+                    ControlFlow::Continue
+                }
+            }),
+        );
+    }
+
     window.present();
+}
+
+pub fn calculate_timeout(settings: &Settings, text: &str) -> Option<u32> {
+    match settings.timeout {
+        Timeout::None => None,
+        // TODO: Use better algorithm
+        Timeout::Auto => Some((text.len() as f64 * 0.1) as _),
+        Timeout::Fixed(timeout) => Some(timeout),
+    }
 }
 
 pub fn calculate_popup_info(global_info: &GlobalInfo, text: &str) -> PopupInfo {
