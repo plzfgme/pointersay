@@ -44,7 +44,11 @@ pub fn create_window(
     let text_buffer = text_view.buffer();
     text_buffer.set_text(text);
     text_view.set_editable(false);
-    text_view.set_wrap_mode(WrapMode::None);
+    if settings.wrap {
+        text_view.set_wrap_mode(WrapMode::Word);
+    } else {
+        text_view.set_wrap_mode(WrapMode::None);
+    }
     let css = "
         textview {
             font-size: 18px;
@@ -73,7 +77,11 @@ pub fn create_window(
     vbox.append(&close_button);
     window.set_child(Some(&vbox));
 
-    setup_popup(backend, &window, &calculate_popup_info(global_info, text));
+    setup_popup(
+        backend,
+        &window,
+        &calculate_popup_info(settings, global_info, text),
+    );
 
     if let Some(timeout) = timeout {
         let timeout = Rc::new(Cell::new(timeout));
@@ -99,12 +107,16 @@ pub fn calculate_timeout(settings: &Settings, text: &str) -> Option<u32> {
     match settings.timeout {
         Timeout::None => None,
         // TODO: Use better algorithm
-        Timeout::Auto => Some((text.len() as f64 * 0.1) as _),
+        Timeout::Auto => Some(((text.len() as f64 * 0.1) as u32).max(5)),
         Timeout::Fixed(timeout) => Some(timeout),
     }
 }
 
-pub fn calculate_popup_info(global_info: &GlobalInfo, text: &str) -> PopupInfo {
+pub fn calculate_popup_info(
+    settings: &Settings,
+    global_info: &GlobalInfo,
+    text: &str,
+) -> PopupInfo {
     let (top_gap, right_gap, bottom_gap, left_gap) = (
         global_info.pointer_y,
         global_info.monitor_width - global_info.pointer_x,
@@ -112,6 +124,7 @@ pub fn calculate_popup_info(global_info: &GlobalInfo, text: &str) -> PopupInfo {
         global_info.pointer_x,
     );
 
+    // TODO: Use better algorithm
     let longest_line_len = text.lines().map(|line| line.len()).max().unwrap_or(0);
     let raw_width = (longest_line_len * 10).min(500).max(200) as _;
     let (rightwards, width) = if raw_width < right_gap {
@@ -121,8 +134,12 @@ pub fn calculate_popup_info(global_info: &GlobalInfo, text: &str) -> PopupInfo {
     } else {
         (true, right_gap - 10)
     };
-    let num_lines = text.lines().count();
-    let raw_height = (num_lines * 30 + 30).min(500).max(60) as _;
+    let num_lines = if settings.wrap {
+        calculate_text_physical_line_num(text, width)
+    } else {
+        text.lines().count() as u32
+    };
+    let raw_height = (num_lines * 25 + 60).min(500).max(100) as _;
     let (upwards, height) = if raw_height < top_gap {
         (true, raw_height)
     } else if raw_height < bottom_gap {
@@ -146,4 +163,11 @@ pub fn calculate_popup_info(global_info: &GlobalInfo, text: &str) -> PopupInfo {
         width,
         height,
     }
+}
+
+// Calculate the number of lines after wrapping
+pub fn calculate_text_physical_line_num(text: &str, width: u32) -> u32 {
+    text.lines()
+        .map(|line| (line.len() as u32 * 10 / width + 1))
+        .sum()
 }

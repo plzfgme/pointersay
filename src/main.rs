@@ -33,6 +33,9 @@ pub struct Args {
         default_value = "auto"
     )]
     timeout: String,
+
+    #[arg(short, long, help = "Do not wrap text", default_value_t = false)]
+    no_wrap: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +48,7 @@ pub enum Timeout {
 #[derive(Debug)]
 pub struct Settings {
     pub timeout: Timeout,
+    pub wrap: bool,
 }
 
 impl Settings {
@@ -61,7 +65,10 @@ impl Settings {
             }
         };
 
-        Self { timeout }
+        Self {
+            timeout,
+            wrap: !args.no_wrap,
+        }
     }
 }
 
