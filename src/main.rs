@@ -10,7 +10,7 @@ use gtk4::{prelude::*, Application};
 use window::create_window;
 
 #[derive(Debug, Clone, Copy)]
-enum Backend {
+pub enum Backend {
     X11,
     Wayland,
 }
