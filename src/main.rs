@@ -23,10 +23,8 @@ fn detect_backend() -> Backend {
 }
 
 fn main() {
-    let text = stdin()
-        .bytes()
-        .map(|b| b.unwrap() as char)
-        .collect::<String>();
+    let mut text = String::new();
+    stdin().read_to_string(&mut text).unwrap();
 
     let backend = detect_backend();
 
