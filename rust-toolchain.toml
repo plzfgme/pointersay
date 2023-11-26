@@ -1,0 +1,10 @@
+[toolchain]
+channel = "stable"
+components = [
+  "rustfmt",
+  "rustc",
+  "rust-analyzer",
+  "cargo",
+  "clippy",
+]
+profile = "minimal"
