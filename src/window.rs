@@ -8,9 +8,12 @@ use gtk4::prelude::*;
 use gtk4::Application;
 use gtk4::ApplicationWindow;
 use gtk4::Button;
+use gtk4::CssProvider;
+use gtk4::Orientation;
 use gtk4::ScrolledWindow;
 use gtk4::TextView;
 use gtk4::WrapMode;
+use gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION;
 
 use crate::popup::setup_popup;
 use crate::popup::PopupInfo;
@@ -34,11 +37,11 @@ pub fn create_window(
         }
         ";
 
-    let provider = gtk4::CssProvider::new();
+    let provider = CssProvider::new();
     provider.load_from_data(css);
     window
         .style_context()
-        .add_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        .add_provider(&provider, STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     let text_view = TextView::new();
     let text_buffer = text_view.buffer();
@@ -54,43 +57,43 @@ pub fn create_window(
             font-size: 18px;
         }
         ";
-    let provider = gtk4::CssProvider::new();
+    let provider = CssProvider::new();
     provider.load_from_data(css);
     text_view
         .style_context()
-        .add_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        .add_provider(&provider, STYLE_PROVIDER_PRIORITY_APPLICATION);
     let scrolled_window = ScrolledWindow::new();
     scrolled_window.set_child(Some(&text_view));
     scrolled_window.set_vexpand(true);
 
     let timeout = calculate_timeout(settings, text);
 
+    let button_box = gtk4::Box::new(Orientation::Horizontal, 0);
     let close_button = match timeout {
         Some(timeout) => Button::with_label(&format!("Close ({}s)", timeout)),
         None => Button::with_label("Close"),
     };
+    close_button.add_css_class("destructive-action");
     close_button.connect_clicked(clone!(@weak window => move |_| {
         window.destroy();
     }));
-    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    vbox.append(&scrolled_window);
-    vbox.append(&close_button);
-    window.set_child(Some(&vbox));
-
-    setup_popup(
-        backend,
-        &window,
-        &calculate_popup_info(settings, global_info, text),
-    );
+    button_box.append(&close_button);
+    let delay_button = timeout.map(|_| Button::with_label("Delay"));
+    if let Some(delay_button) = &delay_button {
+        button_box.append(delay_button);
+    }
+    button_box.set_homogeneous(true);
+    button_box.set_spacing(5);
 
     if let Some(timeout) = timeout {
         let timeout = Rc::new(Cell::new(timeout));
+        let timeout_clone = timeout.clone();
         timeout_add_seconds_local(
             1,
-            clone!(@weak window => @default-return ControlFlow::Break, move || {
-                timeout.set(timeout.get() - 1);
-                close_button.set_label(&format!("Close ({}s)", timeout.get()));
-                if timeout.get() == 0 {
+            clone!(@weak window, @weak close_button => @default-return ControlFlow::Break, move || {
+                timeout_clone.set(timeout_clone.get() - 1);
+                close_button.set_label(&format!("Close ({}s)", timeout_clone.get()));
+                if timeout_clone.get() == 0 {
                     window.destroy();
                     ControlFlow::Break
                 } else {
@@ -98,7 +101,24 @@ pub fn create_window(
                 }
             }),
         );
+        delay_button
+            .unwrap()
+            .connect_clicked(clone!(@weak window => move |_| {
+                timeout.set(timeout.get() + 10);
+                close_button.set_label(&format!("Close ({}s)", timeout.get()));
+            }));
     }
+
+    let vbox = gtk4::Box::new(Orientation::Vertical, 0);
+    vbox.append(&scrolled_window);
+    vbox.append(&button_box);
+    window.set_child(Some(&vbox));
+
+    setup_popup(
+        backend,
+        &window,
+        &calculate_popup_info(settings, global_info, text),
+    );
 
     window.present();
 }
