@@ -5,6 +5,7 @@ mod window;
 use std::io::{stdin, Read};
 
 use clap::Parser;
+use gio::ApplicationFlags;
 use global_info::get_global_info;
 use gtk4::{prelude::*, Application};
 use window::create_window;
@@ -85,6 +86,7 @@ fn main() {
 
     let application = Application::builder()
         .application_id("com.github.plzfgme.pointersay")
+        .flags(ApplicationFlags::NON_UNIQUE)
         .build();
 
     application
