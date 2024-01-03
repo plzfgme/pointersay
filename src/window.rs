@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::process::Command;
 use std::rc::Rc;
 
 use glib::clone;
@@ -66,48 +67,10 @@ pub fn create_window(
     scrolled_window.set_child(Some(&text_view));
     scrolled_window.set_vexpand(true);
 
-    let timeout = calculate_timeout(settings, text);
-
-    let button_box = gtk4::Box::new(Orientation::Horizontal, 0);
-    let close_button = match timeout {
-        Some(timeout) => Button::with_label(&format!("Close ({}s)", timeout)),
-        None => Button::with_label("Close"),
-    };
-    close_button.add_css_class("destructive-action");
-    close_button.connect_clicked(clone!(@weak window => move |_| {
-        window.destroy();
-    }));
-    button_box.append(&close_button);
-    let delay_button = timeout.map(|_| Button::with_label("Delay"));
-    if let Some(delay_button) = &delay_button {
-        button_box.append(delay_button);
-    }
-    button_box.set_homogeneous(true);
-    button_box.set_spacing(5);
-
-    if let Some(timeout) = timeout {
-        let timeout = Rc::new(Cell::new(timeout));
-        let timeout_clone = timeout.clone();
-        timeout_add_seconds_local(
-            1,
-            clone!(@weak window, @weak close_button => @default-return ControlFlow::Break, move || {
-                timeout_clone.set(timeout_clone.get() - 1);
-                close_button.set_label(&format!("Close ({}s)", timeout_clone.get()));
-                if timeout_clone.get() == 0 {
-                    window.destroy();
-                    ControlFlow::Break
-                } else {
-                    ControlFlow::Continue
-                }
-            }),
-        );
-        delay_button
-            .unwrap()
-            .connect_clicked(clone!(@weak window => move |_| {
-                timeout.set(timeout.get() + 10);
-                close_button.set_label(&format!("Close ({}s)", timeout.get()));
-            }));
-    }
+    let mut buttons = Vec::new();
+    add_extra_buttons(&mut buttons, settings, text);
+    add_close_buttons(&mut buttons, settings, &window, text);
+    let button_box = build_button_box(&buttons);
 
     let vbox = gtk4::Box::new(Orientation::Vertical, 0);
     vbox.append(&scrolled_window);
@@ -159,7 +122,9 @@ pub fn calculate_popup_info(
     } else {
         text.lines().count() as u32
     };
-    let raw_height = (num_lines * 25 + 60).min(500).max(100) as _;
+    let raw_height = (num_lines * 25 + ((settings.extra_buttons.len() + 2) / 2) as u32 * 30 + 60)
+        .min(500)
+        .max(100) as _;
     let (upwards, height) = if raw_height < top_gap {
         (true, raw_height)
     } else if raw_height < bottom_gap {
@@ -190,4 +155,86 @@ pub fn calculate_text_physical_line_num(text: &str, width: u32) -> u32 {
     text.lines()
         .map(|line| (line.len() as u32 * 10 / width + 1))
         .sum()
+}
+
+pub fn add_extra_buttons(buttons: &mut Vec<Button>, settings: &Settings, text: &str) {
+    for (name, command) in &settings.extra_buttons {
+        let button = Button::with_label(name);
+        let command = command.clone();
+        let text = text.to_owned();
+        button.connect_clicked(move |_| {
+            Command::new("sh")
+                .arg("-c")
+                .arg(format!("{} \"{}\"", command, text))
+                .spawn()
+                .expect("Failed to execute command");
+        });
+        buttons.push(button);
+    }
+}
+
+pub fn add_close_buttons(
+    buttons: &mut Vec<Button>,
+    settings: &Settings,
+    window: &ApplicationWindow,
+    text: &str,
+) {
+    let timeout = calculate_timeout(settings, text);
+
+    let close_button = match timeout {
+        Some(timeout) => Button::with_label(&format!("Close ({}s)", timeout)),
+        None => Button::with_label("Close"),
+    };
+
+    close_button.add_css_class("destructive-action");
+    close_button.connect_clicked(clone!(@weak window => move |_| {
+        window.destroy();
+    }));
+    buttons.push(close_button.clone());
+
+    let delay_button = timeout.map(|_| {
+        let button = Button::with_label("Delay");
+        buttons.push(button.clone());
+
+        button
+    });
+
+    if let Some(timeout) = timeout {
+        let timeout = Rc::new(Cell::new(timeout));
+        let timeout_clone = timeout.clone();
+        timeout_add_seconds_local(
+            1,
+            clone!(@weak window, @weak close_button => @default-return ControlFlow::Break, move || {
+            timeout_clone.set(timeout_clone.get() - 1);
+            close_button.set_label(&format!("Close ({}s)", timeout_clone.get()));
+            if timeout_clone.get() == 0 {
+                window.destroy();
+                ControlFlow::Break
+            } else {
+                ControlFlow::Continue
+            }
+            }),
+        );
+        delay_button
+            .unwrap()
+            .connect_clicked(clone!(@weak window => move |_| {
+            timeout.set(timeout.get() + 10);
+            close_button.set_label(&format!("Close ({}s)", timeout.get()));
+            }));
+    }
+}
+
+pub fn build_button_box(buttons: &[Button]) -> gtk4::Box {
+    let vbox = gtk4::Box::new(Orientation::Vertical, 0);
+    for row in buttons.chunks(2) {
+        let hbox = gtk4::Box::new(Orientation::Horizontal, 0);
+        for button in row {
+            hbox.append(button);
+        }
+        hbox.set_homogeneous(true);
+        hbox.set_spacing(5);
+        vbox.append(&hbox);
+    }
+
+    vbox
 }

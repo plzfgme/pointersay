@@ -37,6 +37,12 @@ pub struct Args {
 
     #[arg(short, long, help = "Do not wrap text", default_value_t = false)]
     no_wrap: bool,
+
+    #[arg(long, help = "Extra button names", default_values_t = Vec::<String>::new())]
+    extra_button_names: Vec<String>,
+
+    #[arg(long, help = "Extra button commands", default_values_t = Vec::<String>::new())]
+    extra_button_commands: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +56,7 @@ pub enum Timeout {
 pub struct Settings {
     pub timeout: Timeout,
     pub wrap: bool,
+    pub extra_buttons: Vec<(String, String)>,
 }
 
 impl Settings {
@@ -66,9 +73,21 @@ impl Settings {
             }
         };
 
+        if args.extra_button_names.len() != args.extra_button_commands.len() {
+            panic!("Extra button names and commands must be the same length");
+        }
+
+        let extra_buttons = args
+            .extra_button_names
+            .iter()
+            .zip(args.extra_button_commands.iter())
+            .map(|(name, command)| (name.clone(), command.clone()))
+            .collect();
+
         Self {
             timeout,
             wrap: !args.no_wrap,
+            extra_buttons,
         }
     }
 }
